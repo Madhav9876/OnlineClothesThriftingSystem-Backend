@@ -174,6 +174,50 @@ orderRouter.post('/', requireAuth, async (req, res) => {
   return res.status(201).json(withOrderEstimate(order));
 });
 
+orderRouter.patch('/:id/cancel', requireAuth, async (req, res) => {
+  if (req.user.role !== 'buyer') {
+    return res.status(403).json({ message: 'Only buyers can cancel orders' });
+  }
+
+  if (isMongoReady()) {
+    const order = await Order.findOne({ _id: req.params.id, buyer: req.user.id })
+      .populate('product')
+      .populate('buyer', 'name email location phone')
+      .populate('seller', 'name email location phone');
+    if (!order) return res.status(404).json({ message: 'Order not found' });
+    if (order.status === 'delivered') return res.status(400).json({ message: 'Delivered orders cannot be cancelled' });
+    if (order.status === 'cancelled') return res.json(withOrderEstimate(order));
+
+    if (order.product) {
+      order.product.quantity = Math.max(0, Number(order.product.quantity || 0)) + Number(order.quantity || 1);
+      order.product.status = 'available';
+      await order.product.save();
+    }
+
+    order.status = 'cancelled';
+    await order.save();
+    return res.json(withOrderEstimate(order));
+  }
+
+  const order = memory.orders.find((item) => item._id === req.params.id && item.buyer === req.user.id);
+  if (!order) return res.status(404).json({ message: 'Order not found' });
+  if (order.status === 'delivered') return res.status(400).json({ message: 'Delivered orders cannot be cancelled' });
+  if (order.status === 'cancelled') return res.json(withOrderEstimate(order));
+
+  const productId = order.product?._id || order.product;
+  const product = memory.products.find((item) => item._id === productId);
+  if (product) {
+    product.quantity = Math.max(0, Number(product.quantity || 0)) + Number(order.quantity || 1);
+    product.status = 'available';
+  } else if (order.product && typeof order.product === 'object') {
+    order.product.quantity = Math.max(0, Number(order.product.quantity || 0)) + Number(order.quantity || 1);
+    order.product.status = 'available';
+  }
+
+  order.status = 'cancelled';
+  return res.json(withOrderEstimate(order));
+});
+
 orderRouter.patch('/:id/status', requireAuth, async (req, res) => {
   if (req.user.role !== 'seller') {
     return res.status(403).json({ message: 'Only sellers can update order status' });

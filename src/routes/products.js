@@ -156,6 +156,26 @@ productRouter.post('/', requireAuth, requireRole('seller'), upload.single('image
   return res.status(201).json(productDto(product));
 });
 
+productRouter.patch('/:id', requireAuth, requireRole('seller'), async (req, res) => {
+  const description = String(req.body.description || '').trim();
+
+  if (isMongoReady()) {
+    const product = await Product.findOneAndUpdate(
+      { _id: req.params.id, seller: req.user.id },
+      { description },
+      { new: true }
+    );
+    if (!product) return res.status(404).json({ message: 'Listing not found' });
+    return res.json(productDto(product));
+  }
+
+  const product = memory.products.find((item) => item._id === req.params.id && item.seller === req.user.id);
+  if (!product) return res.status(404).json({ message: 'Listing not found' });
+
+  product.description = description;
+  return res.json(productDto(product));
+});
+
 productRouter.delete('/:id', requireAuth, async (req, res) => {
   if (!['seller', 'admin'].includes(req.user.role)) {
     return res.status(403).json({ message: 'Seller or admin access required' });

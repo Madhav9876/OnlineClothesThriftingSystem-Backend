@@ -19,8 +19,27 @@ const clientDist = path.join(__dirname, '..', '..', 'client', 'dist');
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 const port = process.env.PORT || 5000;
+const defaultClientOrigins = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'https://onlineclothesthrifting.vercel.app'
+];
+const configuredClientOrigins = [process.env.CLIENT_ORIGIN, process.env.CLIENT_ORIGINS]
+  .filter(Boolean)
+  .flatMap((value) => value.split(','))
+  .map((origin) => origin.trim().replace(/\/$/, ''))
+  .filter(Boolean);
+const allowedClientOrigins = new Set([...defaultClientOrigins, ...configuredClientOrigins]);
 
-app.use(cors({ origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173' }));
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || allowedClientOrigins.has(origin.replace(/\/$/, ''))) {
+      return callback(null, true);
+    }
+
+    return callback(new Error(`CORS blocked origin: ${origin}`));
+  }
+}));
 app.use(express.json({ limit: '10mb' }));
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
